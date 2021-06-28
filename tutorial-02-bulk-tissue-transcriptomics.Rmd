@@ -1,0 +1,266 @@
+---
+title: "Functional Genomics Part 2 : Estimating cell type changes in aging and depression"
+author: Shreejoy Tripathy
+date: July 7, 2020
+output:
+  github_document:
+    html_preview: true
+    toc: true
+    toc_depth: 3
+---
+
+# Estimating relative cell type proportion changes in bulk brain gene expression data
+
+In this tutorial, we will use a computational technique called Marker Gene Profiles to estimate how proportions of cell types in the brain change in conditions such as natural aging and in depression. The Marker Gene Profiles tool is an example of a cell type deconvolution algorithm, that attempts to decompose a bulk tissue gene expression sample into a list of cell types. 
+
+Cell type deconvolution requires two components, first, a set of marker genes per cell type that you want to estimate (these are often derived from single-cell RNAseq data), and second,  set of bulk tissue gene expression samples.
+
+You can learn more about the Marker Gene Profiles tool by reading the [documentation](https://github.com/PavlidisLab/markerGeneProfile) and by reading [Mancarci et al, 2017](http://www.eneuro.org/content/4/6/ENEURO.0212-17.2017) that describes it in greater detail.
+
+### preliminaries
+
+We are introducing more R packages that can be installed using Bioconductor using `BiocManager` and from github using `remotes`.
+
+These have already been installed into the Docker environment for you. But we are leaving some install commands here for reference.
+
+```
+## install edgeR 
+# BiocManager::install("edgeR")
+# devtools::install_github('oganm/markerGeneProfile', force = T) # install marker gene profile tool from github
+```
+
+### loading R libraries
+
+```{r basic library loading, message=FALSE, warning=FALSE}
+library(here)
+library(tidyverse)
+library(matrixStats)
+library(cowplot)
+library(broom)
+theme_set(theme_cowplot())
+```
+
+```{r loading markerGeneProfile and edgeR, message=FALSE, warning=FALSE}
+library(edgeR)
+library(markerGeneProfile) 
+```
+
+## Human cell type specific marker genes
+We will now read in a list of cell type specific marker genes. These are based on a re-analysis of [single-nucleus RNAsequencing data](https://celltypes.brain-map.org/rnaseq/human_ctx_smart-seq) of the Human Anterior Cingulate Cortex collected by the Allen Institute for Brain Sciences. Sonny Chen, a post-doc in the Tripathy Lab, has processed these data using standard pipelines to obtain cell type specific marker genes for various cell types available in these data. 
+
+
+### Read in human cell type specific markers from external CSV file
+Sonny has made available the markers in a CSV file. The column `gene` indicates the gene name and the column `cluster` indicates the cell type name. Other columns indicate the quality of each marker.
+```{r, message=FALSE, warning=FALSE}
+# read marker genes
+acc_markers = read_csv(here('marker_genes','ACC_results.csv'))
+cell_types = acc_markers$cluster %>% unique()
+knitr::kable(head(acc_markers))
+```
+
+### Process markers data frame for marker gene profile function
+```{r}
+marker_list <- lapply(cell_types, function(cell_type){
+  return(acc_markers %>% filter(cluster == cell_type) %>% pull(gene) %>% unlist())
+})
+names(marker_list) <- cell_types
+print(cell_types)
+```
+
+### List names of marker genes of the SST cell type
+```{r}
+print(marker_list$Inh_SST)
+```
+
+## Read and process bulk brain gene expression data
+We will now process the bulk brain gene expression data into the form needed for the Marker Gene Profile function.
+
+### Read in the Labonte dataset metadata and gene expression count matrix
+```{r, message=FALSE, warning=FALSE}
+labonte_meta <- read_csv(file = here('data','labonte_dlpfc_meta.csv')) %>%
+  select(geo_accession, 
+         expr_names, 
+         age = age.ch1, 
+         gender = gender.ch1, 
+         pmi = pmi.ch1, 
+         rin = rin.ch1, 
+         ph = ph.ch1, 
+         phenotype = phenotype.ch1)
+labonte_expr <- read_tsv( 
+  here('data',"GSE102556","GSE102556-expression.counts.ARCHS4.txt.zip")) %>%
+  select(c("gene_symbol", labonte_meta$geo_accession)) %>%
+  column_to_rownames("gene_symbol") %>% as.data.frame()
+knitr::kable(labonte_expr[1:5, 1:5])
+```
+
+### Normalize the gene expression dataset into Counts Per Million
+Because of differences in sequencing depth between the different bulk brain gene expression samples, we will normalize for these differences using the [Counts Per Million](https://rdrr.io/bioc/edgeR/man/cpm.html) metric in the library `edgeR`. 
+
+```{r}
+labonte_cpm <- edgeR::cpm(labonte_expr, log = F, prior.count = 0)
+knitr::kable(labonte_cpm[1:5, 1:5])
+```
+
+## Process expression matrix prior to MGP analysis
+The code below filters the gene expression dataset to keep only genes whose names are unique. 
+```{r}
+use_gene_list <- labonte_cpm %>% rownames() %>% unlist %>% unique()
+gene_mat <- labonte_cpm[use_gene_list, ]
+```
+
+### Calculate genes with very low standard deviations and remove them from the expression matrix
+
+```{r}
+gene_sds <- rowSds(gene_mat %>% as.matrix(), na.rm = T) 
+gene_mat <- gene_mat[gene_sds > .1, ]
+```
+
+### Reshape gene expression matrix 
+```{r}
+gene_mat <- gene_mat %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column(var = 'gene_name')
+gene_mat = gene_mat %>% distinct(gene_name, .keep_all = T)
+gene_names = gene_mat$gene_name
+rownames(gene_mat) = rownames(gene_mat) %>% make.names(unique=T)
+gene_mat_trans = gene_mat[-1] %>% t() %>% as.data.frame()
+colnames(gene_mat_trans) = gene_names
+```
+
+### Merge sample metadata matrix with gene expression matrix
+```{r}
+gene_mat_trans <- gene_mat_trans %>% 
+  tibble::rownames_to_column(var = 'geo_accession')
+# merge gene expression and meta data frames
+gene_mat_comb <- inner_join(labonte_meta, gene_mat_trans, by = 'geo_accession')
+```
+
+## Run cell type proportion estimation
+Now that we've processed our cell type marker gene lists and our bulk gene expression data, we can now run the Marker Gene Profile function. The function requires to major inputs, `exprData`, which is the bulk expression dataset (here, it is `gene_mat`), and `genes`, which is the list of marker genes per list of cell types (here, it is `marker_list`). Please see the Marker Gene Profile documentation for more information about the other optional inputs to the function.
+```{r}
+# run MGP analysis
+estimations <-  mgpEstimate(
+  exprData=gene_mat,
+  genes=marker_list,
+  geneColName='gene_name',
+  outlierSampleRemove=F, # should outlier samples removed. This is done using boxplot stats.
+  geneTransform = NULL, # this is the default option for geneTransform
+  groups=NULL, #if there are experimental groups provide them here. if not desired set to NULL
+  seekConsensus=FALSE, # ensures gene rotations are positive in both of the groups
+  removeMinority=TRUE) 
+```
+
+### Merge relative cell type proportions per cell type with sample metadata
+```{r}
+mgp_estimates <- as.data.frame(estimations$estimates) %>%
+  tibble::rownames_to_column(var = 'geo_accession')
+mgp_df <- inner_join(labonte_meta, mgp_estimates, by = "geo_accession")
+knitr::kable(mgp_df[1:5, 1:12])
+```
+
+## Generate plots illustrating cell type proportions
+
+### Plot SST mRNA and relative SST cell type proportion versus subject age
+
+```{r fig.height=3.5, fig.width=8, message=FALSE, warning=FALSE}
+sst_mrna_vs_age_fig <- gene_mat_comb %>% 
+  ggplot(aes(x = age, y = SST, color = phenotype, group = 1)) +  
+  geom_smooth(method = "lm", se = F) + geom_point() + 
+  ylab('SST mRNA (CPM)') + xlab('Age (years)')
+# plot SST cell type proportion (MGP) vs age
+sst_prop_vs_age_fig <- mgp_df %>% 
+  ggplot(aes(x = age, y = Inh_SST, color = phenotype, group = 1)) + 
+  geom_smooth(method = "lm", se = F) + geom_point() + 
+  ylab('SST cell type proportion (MGP)') + xlab('Age (years)')
+# plot subplots together
+plot_grid(sst_mrna_vs_age_fig, sst_prop_vs_age_fig, nrow = 1)
+```
+
+### Plot MOG mRNA and Oligo MGP vs age
+MOG is a marker of Oligodendrocytes.
+
+```{r fig.height=3.5, fig.width=8, message=FALSE, warning=FALSE}
+mog_mrna_vs_age_fig <- gene_mat_comb %>% 
+  ggplot(aes(x = age, y = MOG, color = phenotype, group = 1)) +  
+  geom_smooth(method = "lm", se = F) + geom_point() + 
+  ylab('MOG mRNA (CPM)') + xlab('Age (years)')
+oligo_prop_vs_age_fig <- mgp_df %>% 
+  ggplot(aes(x = age, y = Oligo, color = phenotype, group = 1)) + 
+  geom_smooth(method = "lm", se = F) + geom_point() + 
+  ylab('Oligo cell type proportion (MGP)') + xlab('Age (years)')
+plot_grid(mog_mrna_vs_age_fig, oligo_prop_vs_age_fig, nrow = 1)
+```
+
+
+### merge MGPs with metadata matrix
+
+```{r}
+labonte_meta_plus_mgps <- inner_join(labonte_meta, mgp_df)
+```
+
+## Use statistical models to estimate the effects of age, depression, and other variables
+We will use R's linear modeling function `lm` to fit a statistical model against each cell type proportion and a number of covariates, including gender, pH, RIN (RNA integrity number), PMI (post mortem interval), Age, and Phenotype (control / depression status).
+
+The model form here is: `cell_type_prop ~ gender + ph + rin + pmi + age + phenotype`
+
+To fit many models with `broom` it's useful to use `pivot_longer` to stack the data into one column - then `dpylr::group_by()` to "split" the stacked data..
+
+```{r}
+mod_df_list <- labonte_meta_plus_mgps %>%
+  # pivot longer to stack the cell type columns into one column
+  pivot_longer(all_of(cell_types),
+               names_to = "cell_type",
+               values_to = "cell_type_prop") %>%
+  
+  # group the stacked data by cell_type
+  group_by(cell_type) %>%
+  
+  # fit all the cell_type_prop data accorting to the model 
+  # using the broom package to tidy the results 
+  do(tidy(lm(scale(cell_type_prop) ~ gender + scale(ph) + scale(rin) + scale(pmi) + scale(age) + phenotype,  data = .))) %>%
+  
+  # unstack the data and adjust for multiple comparisons using the Benjamini-Hochberg method
+  ungroup() %>%
+  mutate(padj = p.adjust(`p.value`, method = 'BH')) %>%
+  # clean up the names the the term column
+  mutate(term = recode(term, 
+                       `(Intercept)` = "Intercept", 
+                       `genderMale` = "gender:Male",
+                       `phenotypeMDD` = "disorder:MDD",
+                       `scale(age)` = "age"))
+```
+
+
+
+### Print standardized beta coefficients for each cell type and the depression disease status 
+
+```{r}
+# print data frame for just MDD beta coefficients
+knitr::kable(mod_df_list %>% filter(term == 'disorder:MDD'))
+```
+
+### Print standardized beta coefficients for each cell type and sample age
+```{r}
+# print data frame for just age beta coefficients
+knitr::kable(mod_df_list %>% filter(term == 'age'))
+```
+
+### Make plots showing the effect of age and major depression on cell type proportions
+```{r fig.height=5, fig.width=8, message=FALSE, warning=FALSE}
+# beta coeffs per cell type for phenotype and age effects
+beta_plot <- mod_df_list %>% 
+  filter(term %in% c('disorder:MDD', 'age')) %>% 
+  ggplot(aes(x = cell_type, y = estimate)) + 
+  geom_hline(yintercept = 0) + 
+  geom_bar(stat = "identity") + 
+  geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error)) + 
+  ylab('Std. Beta coeff.') + 
+  xlab('Cell type proportions') + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  facet_wrap(~term)
+beta_plot
+```
+
+
+
+
