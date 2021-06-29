@@ -170,6 +170,8 @@ mgp_df$cell_type = gsub("\\.", "/", mgp_df$cell_type)
 
 ```
 
+Plot
+
 ```{r, plot mgps, fig.height=6, fig.width=16}
 
 # create a vector of cell types to plot 
@@ -185,6 +187,7 @@ for(i in 1:length(plot_genes)){
     aes(x = age, y = cell_proportion, color = phenotype)) +
     geom_smooth(method = "lm", se = F) + 
     geom_point() +
+    ggtitle(paste(plot_genes[i])) +
     ylab(paste(plot_genes[i], " MGP")) + xlab ("sample age (years)") +
     theme_bw() 
 }
@@ -218,6 +221,8 @@ lm_df = mgp_df %>%
 
 # print data frame for just MDD beta coefficients
 kable(lm_df %>% filter(term == 'MDD'))
+# print data frame for just age beta coefficients
+kable(lm_df %>% filter(term == 'age'))
 
 # beta coeffs per cell type for phenotype 
 beta_plot = lm_df %>% 
@@ -227,6 +232,7 @@ beta_plot = lm_df %>%
   geom_hline(yintercept = 0) + 
   geom_bar(stat = "identity") + 
   geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error)) + 
+  ggtitle("MDD vs. controls") +
   ylab('Std. Beta coeff.') + 
   xlab('Cell type proportions') + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
@@ -241,6 +247,7 @@ beta_plot = lm_df %>%
   geom_hline(yintercept = 0) + 
   geom_bar(stat = "identity") + 
   geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error)) + 
+  ggtitle("Aging Effects") +
   ylab('Std. Beta coeff.') + 
   xlab('Cell type proportions') + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
