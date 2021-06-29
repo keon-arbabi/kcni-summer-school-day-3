@@ -208,7 +208,7 @@ lm_df = mgp_df %>%
                        `scale(rin)` = "rin",
                        `scale(pmi)` = "pmi",
                        `scale(ph)` = "ph",
-                       `scale(age_years)` = "age_years",
+                       `scale(age)` = "age",
                        `phenotypeMDD` = "MDD")) %>%
   mutate(class = case_when(
     str_detect(cell_type, "Inh") ~ "Inhibitory",
@@ -219,9 +219,23 @@ lm_df = mgp_df %>%
 # print data frame for just MDD beta coefficients
 kable(lm_df %>% filter(term == 'MDD'))
 
-# beta coeffs per cell type for phenotype and age effects
+# beta coeffs per cell type for phenotype 
 beta_plot = lm_df %>% 
   filter(term %in% 'MDD') %>% 
+  mutate(cell_type = fct_reorder(cell_type, estimate)) %>% 
+  ggplot(aes(x = cell_type, y = estimate)) + 
+  geom_hline(yintercept = 0) + 
+  geom_bar(stat = "identity") + 
+  geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error)) + 
+  ylab('Std. Beta coeff.') + 
+  xlab('Cell type proportions') + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  facet_wrap(~class, drop = T, scale = "free")
+beta_plot
+
+# beta coeffs per cell type for age effects
+beta_plot = lm_df %>% 
+  filter(term %in% 'age') %>% 
   mutate(cell_type = fct_reorder(cell_type, estimate)) %>% 
   ggplot(aes(x = cell_type, y = estimate)) + 
   geom_hline(yintercept = 0) + 
