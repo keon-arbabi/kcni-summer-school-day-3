@@ -24,8 +24,8 @@ Cell-type deconvolution requires three components:
 
 We will begin by loading the packages necessary for this tutorial, which are already installed in your docker container. If the package is not loading, uncomment the line for installing it. 
 
-```{r basic library loading, message=FALSE, warning=FALSE}
 
+```r
 #BiocManager::install("edgeR")
 library(edgeR)
 #devtools::install_github('oganm/markerGeneProfile', force = T) # install marker gene profile tool from github
@@ -43,15 +43,14 @@ library(knitr)
 #install.packages("ggpubr")
 library(ggpubr)
 theme_set(theme_cowplot())
-
 ```
 
 ### **Load data**
 
 Next, import the metadata and counts matrix for the bulk RNA-seq we're analyzing. 
 
-```{r, load data, message=FALSE, warning=FALSE}
 
+```r
 # import metadata
 labonte_meta = read_csv(file = "./data/GSE102556-metadata.csv") %>%
   # grab specific columns and rename for clarity
@@ -65,7 +64,19 @@ labonte_meta = read_csv(file = "./data/GSE102556-metadata.csv") %>%
          phenotype = phenotype.ch1)
 # preview 
 kable(labonte_meta[1:5,])
+```
 
+
+
+|geo_accession |expr_names | age|gender |   pmi| rin|   ph|phenotype |
+|:-------------|:----------|---:|:------|-----:|---:|----:|:---------|
+|GSM2740657    |X14.BA8_9  |  47|Male   | 12.00| 7.8| 6.49|CTRL      |
+|GSM2740658    |X17.BA8_9  |  41|Male   | 24.00| 7.6| 6.00|CTRL      |
+|GSM2740659    |X20.BA8_9  |  31|Male   | 29.50| 6.9| 6.67|CTRL      |
+|GSM2740660    |X23.BA8_9  |  19|Male   | 27.75| 7.7| 6.74|CTRL      |
+|GSM2740661    |X28.BA8_9  |  46|Male   | 19.50| 7.7| 6.42|CTRL      |
+
+```r
 # import expression matrix 
 labonte_counts = read_tsv("./data/GSE102556-expression-counts.txt") %>%
   # grab column with gene names and samples from the metadata file 
@@ -79,41 +90,58 @@ labonte_counts = read_tsv("./data/GSE102556-expression-counts.txt") %>%
 
 # preview 
 kable(labonte_counts[1:5, 1:10])
-
 ```
+
+
+
+|      | GSM2740657| GSM2740658| GSM2740659| GSM2740660| GSM2740661| GSM2740662| GSM2740663| GSM2740664| GSM2740665| GSM2740666|
+|:-----|----------:|----------:|----------:|----------:|----------:|----------:|----------:|----------:|----------:|----------:|
+|A1BG  |        147|        194|        268|        175|        133|        288|        162|        235|        238|        155|
+|A1CF  |         37|         70|         61|         19|         71|         92|         51|         66|         54|         26|
+|A2M   |       2539|       2719|       3594|       3405|       2087|       2374|       2619|       5051|       3779|       4542|
+|A2ML1 |        129|        162|        208|        169|        133|        205|        125|        217|        214|        171|
+|A2MP1 |         36|         87|         89|         67|         56|         80|         71|        113|         79|         58|
 
 ### **Normalize and process**
 
 Because differences in sequencing depth between different bulk brain gene expression samples, we will normalize for these differences using the [Counts Per Million](https://rdrr.io/bioc/edgeR/man/cpm.html) metric in the `edgeR` package. 
 
-```{r, normalize}
 
+```r
 # normalize using CPM, add 0.1 to every observation, and log2 transform 
 labonte_cpm = edgeR::cpm(labonte_counts, log = TRUE, prior.count = 0.1)
 # preview
 kable(labonte_cpm[1:5, 1:10])
-
 ```
+
+
+
+|      | GSM2740657| GSM2740658| GSM2740659| GSM2740660| GSM2740661| GSM2740662| GSM2740663| GSM2740664| GSM2740665| GSM2740666|
+|:-----|----------:|----------:|----------:|----------:|----------:|----------:|----------:|----------:|----------:|----------:|
+|A1BG  |   3.216664|   2.933249|   3.596465|  2.8763379|   2.424683|   3.588944|  2.5975636|   2.997711|  3.0433369|  2.3916043|
+|A1CF  |   1.227975|   1.463728|   1.462455| -0.3216042|   1.519926|   1.943428|  0.9318589|   1.167122|  0.9053833| -0.1795624|
+|A2M   |   7.326552|   6.741614|   7.341384|  7.1579475|   6.395781|   6.631774|  6.6117720|   7.422976|  7.0317638|  7.2637107|
+|A2ML1 |   3.028291|   2.673310|   3.230930|  2.8260294|   2.424683|   3.098660|  2.2237319|   2.882795|  2.8900512|  2.5332471|
+|A2MP1 |   1.188503|   1.777050|   2.006905|  1.4922662|   1.177981|   1.741981|  1.4084738|   1.942020|  1.4534678|  0.9749854|
 
 Calculate genes with low standard deviations and remove them from the expression matrix.
 
-```{r, filter low sd}
 
+```r
 # calculate standard deviation per row
 gene_sds = rowSds(labonte_cpm, na.rm = T) 
 # keep rows (genes) with sd greater than 0.1 across all samples 
 gene_mat = labonte_cpm[gene_sds > .1, ] %>%
   as.data.frame() %>%
   rownames_to_column(var = "gene_symbol")
-
 ```
 
 ### **Cell-proportion estimation**
 
 Import the marker gene list you created in `tutorial 1` and reformat.
 
-```{r, import markers}
 
+```r
 # import from folder 
 marker_data = read.csv(file = "./data/human_markers.csv")[-1] %>%
   # convert class labels to abbreviations
@@ -130,22 +158,38 @@ marker_data$class_label[is.na(marker_data$class_label)] = "NonN"
 
 # check matches 
 paste("marker matches in data: ", length(intersect(unlist(gene_mat$gene), unlist(marker_data$gene))), "/", nrow(marker_data))
+```
+
+```
+## [1] "marker matches in data:  2255 / 3203"
+```
+
+```r
 # get vector of unique cell types 
 cell_types = marker_data$subclass_label %>% unique()
 print(cell_types)
+```
 
+```
+##  [1] "Astrocyte"        "Endothelial"      "Exc_IT"           "Exc_L4_IT"       
+##  [5] "Exc_L5_ET"        "Exc_L5/6_IT_Car3" "Exc_L5/6_NP"      "Exc_L6_CT"       
+##  [9] "Exc_L6b"          "Inh_LAMP5"        "Microglia"        "Oligodendrocyte" 
+## [13] "OPC"              "Inh_PAX6"         "Pericyte"         "Inh_PVALB"       
+## [17] "Inh_SST"          "Inh_VIP"          "VLMC"
+```
+
+```r
 # organize markers into a list 
 marker_list = lapply(cell_types, function(cell_type){
   return(marker_data %>% filter(subclass_label == cell_type) %>% pull(gene) %>% unlist())
   })
 names(marker_list) = cell_types
-
 ```
 
 Run `mgpEstimate` to get cell type proportions for each bulk tissue sample. 
 
-```{r, cell-type proportion estimation, inlcude=FALSE, message=FALSE, warning=FALSE}
 
+```r
 # Run MGP analysis
 estimations =  mgpEstimate(
   exprData = gene_mat,
@@ -170,13 +214,27 @@ mgp_df = inner_join(labonte_meta, mgp_estimates, by = "geo_accession") %>%
 mgp_df$cell_type = gsub("\\.", "/", mgp_df$cell_type)
 # preview 
 kable(mgp_df[1:10,])
-
 ```
+
+
+
+|geo_accession |expr_names | age|gender | pmi| rin|   ph|phenotype |cell_type        | cell_proportion|
+|:-------------|:----------|---:|:------|---:|---:|----:|:---------|:----------------|---------------:|
+|GSM2740657    |X14.BA8_9  |  47|Male   |  12| 7.8| 6.49|CTRL      |Astrocyte        |       2.6999560|
+|GSM2740657    |X14.BA8_9  |  47|Male   |  12| 7.8| 6.49|CTRL      |Endothelial      |       3.0727565|
+|GSM2740657    |X14.BA8_9  |  47|Male   |  12| 7.8| 6.49|CTRL      |Exc_IT           |       0.1857734|
+|GSM2740657    |X14.BA8_9  |  47|Male   |  12| 7.8| 6.49|CTRL      |Exc_L4_IT        |       2.4328749|
+|GSM2740657    |X14.BA8_9  |  47|Male   |  12| 7.8| 6.49|CTRL      |Exc_L5_ET        |      -1.3146115|
+|GSM2740657    |X14.BA8_9  |  47|Male   |  12| 7.8| 6.49|CTRL      |Exc_L5/6_IT_Car3 |       1.2431383|
+|GSM2740657    |X14.BA8_9  |  47|Male   |  12| 7.8| 6.49|CTRL      |Exc_L5/6_NP      |      -0.8938320|
+|GSM2740657    |X14.BA8_9  |  47|Male   |  12| 7.8| 6.49|CTRL      |Exc_L6_CT        |      -1.9448373|
+|GSM2740657    |X14.BA8_9  |  47|Male   |  12| 7.8| 6.49|CTRL      |Exc_L6b          |       1.0559641|
+|GSM2740657    |X14.BA8_9  |  47|Male   |  12| 7.8| 6.49|CTRL      |Inh_LAMP5        |       3.6170420|
 
 Plot marker gene proportions (MGPs) vs. sample age
 
-```{r, plot mgps, fig.height=6, fig.width=16}
 
+```r
 # create a vector of cell types to plot 
 plot_genes = c("Exc_IT","Inh_SST","Oligodendrocyte")
 # create a list to store plots generated within the for loop
@@ -196,8 +254,15 @@ for(i in 1:length(plot_genes)){
 }
 # bring plots together
 plot_grid(plotlist = plot_list, nrow = 1)
+```
 
 ```
+## `geom_smooth()` using formula 'y ~ x'
+## `geom_smooth()` using formula 'y ~ x'
+## `geom_smooth()` using formula 'y ~ x'
+```
+
+![](tutorial-02_files/figure-html/plot mgps-1.png)<!-- -->
 
 ### **Linear models**
 
@@ -207,8 +272,8 @@ The model form here is: `cell_type_prop ~ phenotype + gender + ph + rin + pmi + 
 
 To fit many models with broom, it’s useful to use pivot_longer to stack the data into one column - then group_by() to “split” the stacked data.
 
-```{r, linear models}
 
+```r
 # Linear models where cell_type_prop ~ sex + pmi + age_years`
 lm_df = mgp_df %>%
   group_by(cell_type) %>%
@@ -231,9 +296,62 @@ lm_df = mgp_df %>%
 
 # print data frame for just MDD beta coefficients
 kable(lm_df %>% filter(term == 'MDD'))
+```
+
+
+
+|cell_type        |term |   estimate| std.error|  statistic|   p.value|      padj|class        |
+|:----------------|:----|----------:|---------:|----------:|---------:|---------:|:------------|
+|Astrocyte        |MDD  | -0.1814554| 0.2824241| -0.6424927| 0.5241301| 0.7464357|Non-Neuronal |
+|Endothelial      |MDD  | -0.1048819| 0.2890632| -0.3628339| 0.7185929| 0.8115858|Non-Neuronal |
+|Exc_IT           |MDD  | -0.3973346| 0.2481806| -1.6009901| 0.1170572| 0.3706812|Excitatory   |
+|Exc_L4_IT        |MDD  |  0.1088939| 0.2665840|  0.4084790| 0.6850477| 0.8115858|Excitatory   |
+|Exc_L5/6_IT_Car3 |MDD  | -0.0459116| 0.2718776| -0.1688687| 0.8667303| 0.9076782|Excitatory   |
+|Exc_L5/6_NP      |MDD  | -0.4382747| 0.2592019| -1.6908622| 0.0984528| 0.3538978|Excitatory   |
+|Exc_L5_ET        |MDD  | -0.3762635| 0.2543732| -1.4791788| 0.1467354| 0.4247805|Excitatory   |
+|Exc_L6_CT        |MDD  | -0.2164139| 0.2703507| -0.8004932| 0.4280394| 0.7298620|Excitatory   |
+|Exc_L6b          |MDD  |  0.0150031| 0.2954186|  0.0507858| 0.9597428| 0.9654755|Excitatory   |
+|Inh_LAMP5        |MDD  | -0.2134051| 0.2241255| -0.9521680| 0.3465917| 0.6880104|Inhibitory   |
+|Inh_PAX6         |MDD  | -0.2114222| 0.2803350| -0.7541769| 0.4550529| 0.7380736|Inhibitory   |
+|Inh_PVALB        |MDD  | -0.1346649| 0.2169222| -0.6207982| 0.5381684| 0.7534358|Inhibitory   |
+|Inh_SST          |MDD  | -0.1950828| 0.1687478| -1.1560613| 0.2543484| 0.5545628|Inhibitory   |
+|Inh_VIP          |MDD  | -0.4210047| 0.2534309| -1.6612209| 0.1042983| 0.3650441|Inhibitory   |
+|Microglia        |MDD  | -0.1511913| 0.2963048| -0.5102558| 0.6126085| 0.7910382|Non-Neuronal |
+|Oligodendrocyte  |MDD  |  0.1867213| 0.2559009|  0.7296625| 0.4697449| 0.7437628|Non-Neuronal |
+|OPC              |MDD  | -0.2178394| 0.2853736| -0.7633480| 0.4496262| 0.7380736|Non-Neuronal |
+|Pericyte         |MDD  | -0.1880874| 0.2943114| -0.6390762| 0.5263279| 0.7464357|Non-Neuronal |
+|VLMC             |MDD  | -0.2168155| 0.2857047| -0.7588797| 0.4522654| 0.7380736|Non-Neuronal |
+
+```r
 # print data frame for just age beta coefficients
 kable(lm_df %>% filter(term == 'age'))
+```
 
+
+
+|cell_type        |term |   estimate| std.error|  statistic|   p.value|      padj|class        |
+|:----------------|:----|----------:|---------:|----------:|---------:|---------:|:------------|
+|Astrocyte        |age  |  0.2463604| 0.1522435|  1.6182001| 0.1132880| 0.3706812|Non-Neuronal |
+|Endothelial      |age  |  0.3306262| 0.1558224|  2.1218146| 0.0399426| 0.2043218|Non-Neuronal |
+|Exc_IT           |age  |  0.0526654| 0.1337842|  0.3936595| 0.6958723| 0.8115858|Excitatory   |
+|Exc_L4_IT        |age  | -0.3500279| 0.1437047| -2.4357442| 0.0192950| 0.1243466|Excitatory   |
+|Exc_L5/6_IT_Car3 |age  | -0.5041654| 0.1465583| -3.4400332| 0.0013496| 0.0128211|Excitatory   |
+|Exc_L5/6_NP      |age  | -0.0445024| 0.1397254| -0.3184994| 0.7517230| 0.8262741|Excitatory   |
+|Exc_L5_ET        |age  | -0.0906562| 0.1371224| -0.6611337| 0.5122249| 0.7464357|Excitatory   |
+|Exc_L6_CT        |age  | -0.1007912| 0.1457352| -0.6916050| 0.4930834| 0.7464357|Excitatory   |
+|Exc_L6b          |age  | -0.2295658| 0.1592483| -1.4415589| 0.1570218| 0.4314175|Excitatory   |
+|Inh_LAMP5        |age  | -0.5033480| 0.1208170| -4.1662003| 0.0001556| 0.0029513|Inhibitory   |
+|Inh_PAX6         |age  |  0.0088710| 0.1511174|  0.0587025| 0.9534743| 0.9654755|Inhibitory   |
+|Inh_PVALB        |age  | -0.5229318| 0.1169341| -4.4720226| 0.0000602| 0.0018698|Inhibitory   |
+|Inh_SST          |age  | -0.6418557| 0.0909652| -7.0560600| 0.0000000| 0.0000018|Inhibitory   |
+|Inh_VIP          |age  | -0.5961769| 0.1366144| -4.3639374| 0.0000844| 0.0018698|Inhibitory   |
+|Microglia        |age  |  0.1600091| 0.1597260|  1.0017719| 0.3223297| 0.6495432|Non-Neuronal |
+|Oligodendrocyte  |age  |  0.5420832| 0.1379459|  3.9296794| 0.0003198| 0.0042527|Non-Neuronal |
+|OPC              |age  |  0.1343605| 0.1538335|  0.8734152| 0.3875239| 0.7172334|Non-Neuronal |
+|Pericyte         |age  |  0.2199408| 0.1586515|  1.3863141| 0.1731442| 0.4428497|Non-Neuronal |
+|VLMC             |age  |  0.2481138| 0.1540120|  1.6110036| 0.1148519| 0.3706812|Non-Neuronal |
+
+```r
 # beta coeffs per cell type for phenotype 
 beta_plot = lm_df %>% 
   filter(term %in% 'MDD') %>% 
@@ -248,7 +366,11 @@ beta_plot = lm_df %>%
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
   facet_wrap(~class, drop = T, scale = "free")
 beta_plot
+```
 
+![](tutorial-02_files/figure-html/linear models-1.png)<!-- -->
+
+```r
 # beta coeffs per cell type for age effects
 beta_plot = lm_df %>% 
   filter(term %in% 'age') %>% 
@@ -263,9 +385,9 @@ beta_plot = lm_df %>%
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
   facet_wrap(~class, drop = T, scale = "free")
 beta_plot
-
-
 ```
+
+![](tutorial-02_files/figure-html/linear models-2.png)<!-- -->
 
 That concludes the mgpEstimate tutorial. 
 
