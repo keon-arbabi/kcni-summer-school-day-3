@@ -6,6 +6,6 @@ server: rpubs.com
 hostUrl: rpubs.com
 appId: https://api.rpubs.com/api/v1/document/788500/e500589a682a4c2584f049e43a2395fe
 bundleId: https://api.rpubs.com/api/v1/document/788500/e500589a682a4c2584f049e43a2395fe
-url: http://rpubs.com/publish/claim/788500/037a67ce047b4ae5873f5197306176de
-when: 1625587124.85353
-lastSyncTime: 1625587124.85353
+url: http://rpubs.com/keon_a/788500
+when: 1625609536.73645
+lastSyncTime: 1625609536.73645
