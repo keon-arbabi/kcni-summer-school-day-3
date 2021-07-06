@@ -204,13 +204,13 @@ First, we apply a linear transformation (‘scaling’) that is a standard pre-p
 
 PCA is the process of identifying a series of orthogonal vectors that iteratively capture the greatest amount of variance in the data. The aim of this approach is to adequately summarize the high-dimensional relationships of the original data in a lower-dimensional space. 
 
-We perform PCA and order both cells and features according to their PCA scores for visualization. 
+We perform PCA on the 2000 most variable features then order both cells and features according to their PCA scores for visualization.
 
 
 ```r
 # scale for all genes
-seu_obj = ScaleData(seu_obj, 
-                    features = rownames(seu_obj)) 
+seu_obj = ScaleData(seu_obj,
+                    features = rownames(seu_obj))
 ```
 
 ```
@@ -218,9 +218,11 @@ seu_obj = ScaleData(seu_obj,
 ```
 
 ```r
+# find most variable features
+seu_obj = FindVariableFeatures(seu_obj,
+                               nfeatures = 2000)
 # run PCA
 seu_obj = RunPCA(seu_obj,
-                 features = rownames(seu_obj), 
                  verbose = FALSE)
 # preview principal components (PCs)
 print(seu_obj@reductions$pca, dims = 1:5, nfeatures = 5)
@@ -228,20 +230,20 @@ print(seu_obj@reductions$pca, dims = 1:5, nfeatures = 5)
 
 ```
 ## PC_ 1 
-## Positive:  SLC1A3, ZBTB20, MAML2, LOC339975, QKI 
-## Negative:  DCLK1, SLC4A10, STXBP5L, FRMPD4, MEG3 
+## Positive:  CX3CR1, APBB1IP, LPAR6, DOCK8, C3 
+## Negative:  CTNNA2, LRRC4C, KCNIP4, PDE8B, ROBO2 
 ## PC_ 2 
-## Positive:  HSPA8, TMSB4X, PPIAP22, RNASEK, CFL1 
-## Negative:  LOC100128906, LOC101928286, DNAH17, SCHLAP1, LOC105377056 
+## Positive:  SYNDIG1, HS3ST4, ARHGAP22, RASGEF1C, RNASET2 
+## Negative:  ADGRF5, EBF1, LEF1, IFITM3, CLDN5 
 ## PC_ 3 
-## Positive:  SATB2, SV2B, SLC17A7, CADPS2, TESPA1 
-## Negative:  GAD1, NXPH1, GAD2, ERBB4, ZNF536 
+## Positive:  DOCK5, FGFR2, PTGDS, SLC1A3, NCKAP5 
+## Negative:  ARL15, PTPRB, SLC39A10, ROBO2, HERC2P2 
 ## PC_ 4 
-## Positive:  RNF219-AS1, ETNPPL, FGFR3, LINC00499, SLC25A18 
-## Negative:  SRGAP2B, SRGAP2, MEF2C, ITGAX, DOCK8 
+## Positive:  RNF219-AS1, ATP1A2, SLCO1C1, ETNPPL, COL5A3 
+## Negative:  MOG, CNDP1, ST18, OPALIN, MYRF 
 ## PC_ 5 
-## Positive:  LOC101929249, MOG, CNDP1, ST18, UGT8 
-## Negative:  RBMS3, ABLIM1, NEBL, SAT1, LOC101927437
+## Positive:  HIGD1B, MIR143HG, COL1A2, SLC6A12, NOTCH3 
+## Negative:  CTNNA2, FGFR3, ITGA6, RNF219-AS1, ACSBG1
 ```
 
 ```r

@@ -141,16 +141,17 @@ First, we apply a linear transformation (‘scaling’) that is a standard pre-p
 
 PCA is the process of identifying a series of orthogonal vectors that iteratively capture the greatest amount of variance in the data. The aim of this approach is to adequately summarize the high-dimensional relationships of the original data in a lower-dimensional space. 
 
-We perform PCA and order both cells and features according to their PCA scores for visualization. 
+We perform PCA on the 2000 most variable features then order both cells and features according to their PCA scores for visualization.
 
 ```{r, PCA, fig.width=16, fig.height=9}
-
 # scale for all genes
-seu_obj = ScaleData(seu_obj, 
-                    features = rownames(seu_obj)) 
+seu_obj = ScaleData(seu_obj,
+                    features = rownames(seu_obj))
+# find most variable features
+seu_obj = FindVariableFeatures(seu_obj,
+                               nfeatures = 2000)
 # run PCA
 seu_obj = RunPCA(seu_obj,
-                 features = rownames(seu_obj), 
                  verbose = FALSE)
 # preview principal components (PCs)
 print(seu_obj@reductions$pca, dims = 1:5, nfeatures = 5)
