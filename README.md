@@ -8,7 +8,7 @@ Navigate to `day3` in `Rstudio's` file explorer, and run the `.Rmd` files. Every
 
 If you are experiencing issues with docker or would just like to follow along without using RStudio, the code and figures for each tutorial can be found below: 
 
-[Tutorial 01: Single-Cell Transcriptomics](https://rpubs.com/keon_a/knci_t01)
+[Tutorial 01: Single-Cell Transcriptomics](https://rpubs.com/keon_a/knci_T01_new)
 
 [Tutorial 02: Bulk Tissue Transcriptomics](https://rpubs.com/keon_a/knci-T02)
 
